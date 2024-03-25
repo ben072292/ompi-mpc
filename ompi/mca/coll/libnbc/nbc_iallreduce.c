@@ -107,7 +107,8 @@ static int nbc_allreduce_init(const void* sendbuf, void* recvbuf, int count, MPI
   }
 
   span = opal_datatype_span(&datatype->super, count, &gap);
-  tmpbuf = malloc (span);
+  tmpbuf = malloc (span * 2);
+  memset((char*)tmpbuf + span, 255, span); // prepared buffer for light weight enc and dec
   if (OPAL_UNLIKELY(NULL == tmpbuf)) {
     return OMPI_ERR_OUT_OF_RESOURCE;
   }
@@ -363,6 +364,7 @@ static inline int allred_sched_diss(int rank, int p, int count, MPI_Datatype dat
   int root, vrank, maxr, vpeer, peer, res;
   char *rbuf, *lbuf, *buf;
   int tmprbuf, tmplbuf;
+  ptrdiff_t span = opal_datatype_span(&datatype->super, count, &gap);
 
   root = 0; /* this makes the code for ireduce and iallreduce nearly identical - could be changed to improve performance */
   RANK2VRANK(rank, vrank, root);
@@ -437,6 +439,14 @@ static inline int allred_sched_diss(int rank, int p, int count, MPI_Datatype dat
     }
   }
 
+  /**
+   * MPC light-weight encryption.
+   */
+  res = NBC_Sched_barrier (schedule);
+  if(vrank == 0) {
+      res = NBC_Sched_op((char *)tmpbuf+span, false, recvbuf, false, count, datatype, MPI_BXOR, schedule, true);
+  }
+
   /* this is the Bcast part - copied with minor changes from nbc_ibcast.c
    * changed: buffer -> recvbuf  */
   RANK2VRANK(rank, vrank, root);
@@ -470,6 +480,12 @@ static inline int allred_sched_diss(int rank, int p, int count, MPI_Datatype dat
       }
     }
   }
+  /**
+   * MPC light-weight decrpytion
+   */
+  res = NBC_Sched_barrier (schedule);
+  res = NBC_Sched_op((char *)tmpbuf + span, false, recvbuf, false, count, datatype, MPI_BXOR, schedule, true);
+
 
   /* end of the bcast */
   return OMPI_SUCCESS;
@@ -984,7 +1000,8 @@ static inline int allred_sched_redscat_allgather(
         if (OPAL_UNLIKELY(OMPI_SUCCESS != res)) { goto cleanup_and_return; }
     }
     char *tmp_buf = (char *)tmpbuf - gap;
-    ptrdiff_t lb, extent;
+    ptrdiff_t lb, extent, span;
+    span = opal_datatype_span(&datatype->super, count, &gap);
     ompi_datatype_get_extent(datatype, &lb, &extent);
      /*
      * Step 1. Reduce the number of processes to the nearest lower power of two
@@ -1124,6 +1141,15 @@ static inline int allred_sched_redscat_allgather(
                 step++;
             }
         }
+    //  }
+
+        /**
+         * MPC light-weight encryption.
+         */
+        res = NBC_Sched_barrier (schedule);
+        res = NBC_Sched_op((char *)tmpbuf + span, false, (char *)rbuf + (ptrdiff_t)rindex[nsteps - 1] * extent, false, rcount[nsteps -1], datatype, MPI_BXOR, schedule, true);
+        // res = NBC_Sched_op((char *)tmpbuf + span, false, rbuf, false, count, datatype, MPI_BXOR, schedule, true);
+        
         /*
          * Assertion: each process has 1 / p' of the total reduction result:
          * rcount[nsteps - 1] elements in the rbuf[rindex[nsteps - 1], ...].
@@ -1135,6 +1161,7 @@ static inline int allred_sched_redscat_allgather(
          * All exchanges are executed in reverse order relative
          * to recursive doubling (previous step).
          */
+      // if(vrank != -1){
         step = nsteps - 1;
          for (int mask = nprocs_pof2 >> 1; mask > 0; mask >>= 1) {
             int vdest = vrank ^ mask;
@@ -1167,6 +1194,13 @@ static inline int allred_sched_redscat_allgather(
             if (OPAL_UNLIKELY(OMPI_SUCCESS != res)) { goto cleanup_and_return; }
         }
     }
+
+    /**
+     * MPC light-weight decrpytion
+    */
+    res = NBC_Sched_barrier (schedule);
+    res = NBC_Sched_op((char *)tmpbuf + span, false, rbuf, false, count, datatype, MPI_BXOR, schedule, false);
+
    cleanup_and_return:
     if (NULL != rindex)
         free(rindex);
