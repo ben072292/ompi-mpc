@@ -444,7 +444,7 @@ static inline int allred_sched_diss(int rank, int p, int count, MPI_Datatype dat
    */
   res = NBC_Sched_barrier (schedule);
   if(vrank == 0) {
-      res = NBC_Sched_op((char *)tmpbuf+span, false, recvbuf, false, count, MPI_UNSIGNED_CHAR, MPI_BXOR, schedule, true);
+      res = NBC_Sched_op((char *)tmpbuf+span, false, recvbuf, false, count*4, MPI_UNSIGNED_CHAR, MPI_BXOR, schedule, true);
   }
 
   /* this is the Bcast part - copied with minor changes from nbc_ibcast.c
@@ -484,7 +484,7 @@ static inline int allred_sched_diss(int rank, int p, int count, MPI_Datatype dat
    * MPC light-weight decrpytion
    */
   res = NBC_Sched_barrier (schedule);
-  res = NBC_Sched_op((char *)tmpbuf + span, false, recvbuf, false, count, MPI_UNSIGNED_CHAR, MPI_BXOR, schedule, true);
+  res = NBC_Sched_op((char *)tmpbuf + span, false, recvbuf, false, count*4, MPI_UNSIGNED_CHAR, MPI_BXOR, schedule, true);
 
 
   /* end of the bcast */
@@ -1147,7 +1147,7 @@ static inline int allred_sched_redscat_allgather(
          * MPC light-weight encryption.
          */
         res = NBC_Sched_barrier (schedule);
-        res = NBC_Sched_op((char *)tmpbuf + span, false, (char *)rbuf + (ptrdiff_t)rindex[nsteps - 1] * extent, false, rcount[nsteps -1], MPI_UNSIGNED_CHAR, MPI_BXOR, schedule, true);
+        res = NBC_Sched_op((char *)tmpbuf + span, false, (char *)rbuf + (ptrdiff_t)rindex[nsteps - 1] * extent, false, rcount[nsteps -1]*4, MPI_UNSIGNED_CHAR, MPI_BXOR, schedule, true);
         // res = NBC_Sched_op((char *)tmpbuf + span, false, rbuf, false, count, datatype, MPI_BXOR, schedule, true);
         
         /*
@@ -1199,7 +1199,7 @@ static inline int allred_sched_redscat_allgather(
      * MPC light-weight decrpytion
     */
     res = NBC_Sched_barrier (schedule);
-    res = NBC_Sched_op((char *)tmpbuf + span, false, rbuf, false, count, MPI_UNSIGNED_CHAR, MPI_BXOR, schedule, false);
+    res = NBC_Sched_op((char *)tmpbuf + span, false, rbuf, false, count*4, MPI_UNSIGNED_CHAR, MPI_BXOR, schedule, false);
 
    cleanup_and_return:
     if (NULL != rindex)
